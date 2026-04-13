@@ -89,12 +89,19 @@ RUN apt-get update && apt-get install -y ros-humble-desktop && \
 
 RUN python3 -m pip install -U colcon-common-extensions
 
+RUN python3 -m pip install "rosbags==0.10.5"
+
 WORKDIR /mandeye_ws
 
 COPY ./src/common ./src/common
 
 COPY ./src/mandeye_to_rosbag2 ./src/mandeye_to_rosbag2
 
+ARG UID=1000
+ARG GID=1000
+RUN groupadd -g $GID ros && \
+    useradd -m -u $UID -g $GID -s /bin/bash ros
+    
 RUN source /opt/ros/humble/setup.bash && colcon build
 
 CMD ["bash"]
