@@ -13,6 +13,9 @@
 
 #include "common/ImuLoader.h"
 
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
 #include <filesystem>
 
 
@@ -101,13 +104,23 @@ int main(int argc, char **argv) {
             if (p.timestamp == 0)
                 continue;
             p.timestamp += time_start;
+            // Compute the absolute timestamp as integer nanoseconds once, and derive
+            // both timebase and offset_time from that same integer value. Doing this
+            // arithmetic in double (as before) loses precision at ~1e18 ns magnitude
+            // (a double has ~15-17 significant digits, this needs ~19), which could
+            // make offset_time compute as slightly negative and wrap around to near
+            // UINT32_MAX when cast into the uint32 offset_time field -- corrupting a
+            // single point's timestamp by ~4.3 seconds and confusing any downstream
+            // tool (e.g. livox_bag_aggregate) that windows points by timebase+offset_time.
+            const int64_t ts_ns = static_cast<int64_t>(std::llround(p.timestamp * 1e9));
             if (custom_msg.points.size() == 0) {
                 custom_msg.header.stamp.fromSec(p.timestamp);
-                custom_msg.timebase = p.timestamp * 1e9;
+                custom_msg.timebase = static_cast<uint64_t>(ts_ns);
             }
             livox_ros_driver::CustomPoint cp;
             cp.tag = 0;
-            cp.offset_time = p.timestamp * 1e9 - custom_msg.timebase;
+            cp.offset_time = static_cast<uint32_t>(
+                std::max<int64_t>(0, ts_ns - static_cast<int64_t>(custom_msg.timebase)));
             cp.reflectivity = p.intensity;
             cp.x = p.point.x();
             cp.y = p.point.y();
